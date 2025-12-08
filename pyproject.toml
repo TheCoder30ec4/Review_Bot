@@ -1,0 +1,58 @@
+[project]
+name = "code-review-bot"
+version = "0.1.0"
+description = "Enterprise-grade AI-powered code review automation using LangGraph"
+readme = "README.md"
+requires-python = ">=3.12"
+authors = [
+    {name = "Code Review Bot Team"},
+]
+maintainers = [
+    {name = "Code Review Bot Team"},
+]
+keywords = [
+    "ai",
+    "code-review",
+    "langgraph",
+    "github",
+    "automation",
+    "quality-assurance",
+    "enterprise",
+    "devops",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Quality Assurance",
+    "Topic :: Software Development :: Testing",
+    "Topic :: Utilities",
+]
+dependencies = [
+    "graphviz>=0.21",
+    "langchain>=1.1.2",
+    "langchain-community>=0.4.1",
+    "langchain-core>=1.1.1",
+    "langchain-groq>=1.1.0",
+    "langgraph>=1.0.4",
+    "pygithub>=2.8.1",
+    "python-dotenv>=1.2.1",
+    "requests>=2.32.5",
+]
+
+[project.urls]
+Homepage = "https://github.com/your-org/code-review-bot"
+Documentation = "https://github.com/your-org/code-review-bot#readme"
+Repository = "https://github.com/your-org/code-review-bot.git"
+Issues = "https://github.com/your-org/code-review-bot/issues"
+Changelog = "https://github.com/your-org/code-review-bot/blob/main/CHANGELOG.md"
+
+[project.scripts]
+code-review-bot = "main:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

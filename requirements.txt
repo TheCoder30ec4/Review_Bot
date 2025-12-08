@@ -1,0 +1,21 @@
+# Code Review Bot Requirements
+# Install with: pip install -r requirements.txt
+
+# Core AI/ML
+langchain>=1.1.2
+langchain-community>=0.4.1
+langchain-core>=1.1.1
+langchain-groq>=1.1.0
+langgraph>=1.0.4
+
+# GitHub Integration
+pygithub>=2.8.1
+
+# HTTP Requests
+requests>=2.32.5
+
+# Configuration
+python-dotenv>=1.2.1
+
+# Diagrams (optional)
+graphviz>=0.21
