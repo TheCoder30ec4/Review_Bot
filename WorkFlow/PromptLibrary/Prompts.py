@@ -343,6 +343,30 @@ Content Preview:
         validation_issues = retry_context.get("validation_issues", [])
         previous_confidence = retry_context.get("previous_confidence", 0.0)
         retry_attempt = retry_context.get("retry_attempt", 1)
+        is_additional = retry_context.get("is_additional_comment", False)
+        previous_issue = retry_context.get("previous_issue", "")
+
+        # Build specific fix instructions based on validation issues
+        fix_instructions = []
+        issues_str = " ".join(validation_issues).lower()
+
+        if "currentcode" in issues_str or "current code" in issues_str:
+            fix_instructions.append("⚠️ **CurrentCode was MISSING or EMPTY**: You MUST extract the exact existing code from the file that needs to be changed")
+        
+        if "suggestedcode" in issues_str or "suggested code" in issues_str:
+            fix_instructions.append("⚠️ **SuggestedCode was MISSING or EMPTY**: You MUST provide the complete, fixed version of the code")
+        
+        if "file path" in issues_str or "file is not provided" in issues_str:
+            fix_instructions.append("⚠️ **File path was MISSING**: You MUST include the exact file path being reviewed")
+        
+        if "diffcode" in issues_str or "diff" in issues_str:
+            fix_instructions.append("⚠️ **DiffCode needs improvement**: Include complete code context without diff markers (+/-)")
+
+        specific_fixes = "\n".join(fix_instructions) if fix_instructions else "Address all validation issues listed above"
+
+        additional_context = ""
+        if is_additional and previous_issue:
+            additional_context = f"\n**Previous Comment Issue:** {previous_issue[:200]}...\n**Find a DIFFERENT issue** to comment on, not the same one."
 
         retry_section = f"""
 
@@ -353,15 +377,35 @@ Content Preview:
         for i, issue in enumerate(validation_issues, 1):
             retry_section += f"{i}. {issue}\n"
 
-        retry_section += """
-**CRITICAL REQUIREMENTS FOR THIS RETRY:**
-1. **Must populate ALL required fields**: File, CurrentCode, SuggestedCode, DiffCode
-2. **DiffCode must include complete context**: function signatures, imports, surrounding code
-3. **CurrentCode must be the exact existing code** that needs to be replaced
-4. **SuggestedCode must be complete, working code** - no placeholders or pseudo-code
-5. **Ensure the fix is production-ready** and addresses the specific validation issues above
+        retry_section += f"""
+**SPECIFIC FIXES REQUIRED:**
+{specific_fixes}
+{additional_context}
 
-**Previous review was rejected due to incomplete or invalid output. Please provide a complete, actionable review this time.**"""
+**CRITICAL REQUIREMENTS FOR THIS RETRY:**
+1. **File**: Set to the exact file path: "{file_path}"
+2. **CurrentCode**: Extract the EXACT existing problematic code from the file content below
+3. **SuggestedCode**: Provide complete, production-ready replacement code that fixes the issue
+4. **DiffCode**: Include the relevant code context (same as CurrentCode or with more context)
+5. **WhatNeedsToBeImproved**: Clear explanation of the issue and fix
+
+**Example Format (YOUR OUTPUT MUST LOOK LIKE THIS):**
+```
+File: "{file_path}"
+CurrentCode: "def process(data):\\n    return data.process()"
+SuggestedCode: "def process(data):\\n    try:\\n        return data.process()\\n    except Exception as e:\\n        logger.error(f'Error: {{e}}')\\n        raise"
+DiffCode: "def process(data):\\n    return data.process()"
+CriticalityStatus: "Medium"
+WhatNeedsToBeImproved: "Missing error handling..."
+```
+
+**⛔ FAILURE CAUSES (DO NOT REPEAT THESE MISTAKES):**
+- Empty or missing CurrentCode field
+- Empty or missing SuggestedCode field  
+- Placeholder text like "..." or "[code here]"
+- Generic pseudo-code instead of actual working code
+
+**THIS IS YOUR LAST CHANCE - PROVIDE COMPLETE OUTPUT OR THE REVIEW WILL BE SKIPPED!**"""
 
     return f"""Review the following file from a pull request and identify issues, improvements, and potential problems.{retry_section}
 

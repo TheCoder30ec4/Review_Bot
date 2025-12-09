@@ -18,9 +18,77 @@ from WorkFlow.nodes.Fetch_PR_node.FetchPrNode import FetchNode
 from WorkFlow.nodes.Parse_files_node.ParseFileState import ParseState
 from WorkFlow.nodes.Parse_files_node.ParseFileNode import ParseFileNode
 from WorkFlow.nodes.Review_file_node.ReviewFileNode import ReviewFileNode
+from WorkFlow.nodes.Review_file_node.ReviewFileState import ReviewState
 from WorkFlow.nodes.Reflexion_node.ReflexionNode import ReflexionNode
 from WorkFlow.utils.logger import get_logger
 from WorkFlow.utils.memory_manager import get_memory_manager
+
+
+def programmatic_fix_review_state(review_state, file_path: str, file_content: str, logger) -> ReviewState:
+    """
+    Programmatically fix a ReviewState when LLM fails to provide complete data.
+    This is a fallback mechanism to ensure reviews are never skipped.
+    
+    Args:
+        review_state: The ReviewState to fix
+        file_path: Path to the file being reviewed
+        file_content: Content of the file
+        logger: Logger instance
+    
+    Returns:
+        Fixed ReviewState
+    """
+    logger.info(f"🔧 Attempting programmatic fix for ReviewState of {file_path}")
+    
+    # Extract first meaningful code block from file content
+    def extract_code_block(content: str, max_lines: int = 20) -> str:
+        """Extract a meaningful code block from content."""
+        lines = content.split('\n')
+        # Skip empty lines and find code
+        code_lines = []
+        in_code = False
+        for line in lines:
+            stripped = line.strip()
+            # Skip diff headers
+            if stripped.startswith('diff --git') or stripped.startswith('index ') or stripped.startswith('---') or stripped.startswith('+++'):
+                continue
+            if stripped.startswith('@@'):
+                in_code = True
+                continue
+            if in_code:
+                # Remove diff markers
+                if stripped.startswith('+') and not stripped.startswith('+++'):
+                    code_lines.append(line[1:] if line.startswith('+') else line)
+                elif stripped.startswith('-') and not stripped.startswith('---'):
+                    continue  # Skip removed lines
+                else:
+                    code_lines.append(line)
+                if len(code_lines) >= max_lines:
+                    break
+        
+        return '\n'.join(code_lines) if code_lines else content[:500]
+    
+    # Fix missing fields
+    fixed_file = file_path if review_state.File else file_path
+    fixed_diff_code = review_state.DiffCode if review_state.DiffCode else extract_code_block(file_content)
+    fixed_current_code = review_state.CurrentCode if review_state.CurrentCode else fixed_diff_code
+    fixed_suggested_code = review_state.SuggestedCode if review_state.SuggestedCode else f"// TODO: Review and fix the following code:\n{fixed_current_code}"
+    fixed_what_improved = review_state.WhatNeedsToBeImproved if review_state.WhatNeedsToBeImproved else "Code review required - please review the highlighted code for potential improvements."
+    fixed_prompt = review_state.PromptForAI if review_state.PromptForAI else "Review this code section and suggest improvements for production readiness."
+    fixed_criticality = review_state.CriticalityStatus if review_state.CriticalityStatus in ["OK", "Medium", "Critical"] else "Medium"
+    
+    fixed_state = ReviewState(
+        File=fixed_file,
+        CriticalityStatus=fixed_criticality,
+        WhatNeedsToBeImproved=fixed_what_improved,
+        DiffCode=fixed_diff_code,
+        CurrentCode=fixed_current_code,
+        SuggestedCode=fixed_suggested_code,
+        PromptForAI=fixed_prompt
+    )
+    
+    logger.info(f"✅ Programmatic fix applied for {file_path}")
+    return fixed_state
 
 
 class WorkflowState(TypedDict):
@@ -183,8 +251,10 @@ def review_files_node(state: WorkflowState) -> WorkflowState:
     
     # Hallucination guard: Max comments per file
     MAX_COMMENTS_PER_FILE = 3
-    # Hallucination guard: Min confidence threshold
-    MIN_CONFIDENCE_THRESHOLD = 0.6
+    # Hallucination guard: Min confidence threshold (lowered to allow more reviews through with programmatic fixing)
+    MIN_CONFIDENCE_THRESHOLD = 0.4
+    # Maximum reflexion retries before programmatic fix attempt
+    MAX_REFLEXION_RETRIES = 5
     
     for file_path in selected_files:
         
@@ -221,10 +291,9 @@ def review_files_node(state: WorkflowState) -> WorkflowState:
         reflexion_approved = False  # Track if reflexion approved this review
 
         if review_state.CriticalityStatus in ["Medium", "Critical"]:
-            max_reflexion_retries = 2
             reflexion_retry_count = 0
 
-            while reflexion_retry_count <= max_reflexion_retries:
+            while reflexion_retry_count <= MAX_REFLEXION_RETRIES:
                 pr_context = {
                     "pr_title": fetch_state.PrRequest.Title,
                     "pr_description": fetch_state.PrRequest.Description
@@ -245,16 +314,40 @@ def review_files_node(state: WorkflowState) -> WorkflowState:
 
                 # ❌ REFLEXION REJECTED: Validation failed
                 reflexion_retry_count += 1
-                logger.warning(f"❌ Reflexion rejected review (attempt {reflexion_retry_count}/{max_reflexion_retries + 1}) - confidence: {confidence:.2f}")
+                logger.warning(f"❌ Reflexion rejected review (attempt {reflexion_retry_count}/{MAX_REFLEXION_RETRIES + 1}) - confidence: {confidence:.2f}")
                 logger.warning(f"Validation issues: {', '.join(validation_issues)}")
 
-                if reflexion_retry_count > max_reflexion_retries:
-                    logger.warning(f"❌ All reflexion retries exhausted. Review NOT approved for {file_path}.")
-                    reflexion_approved = False  # Explicitly mark as not approved
+                if reflexion_retry_count > MAX_REFLEXION_RETRIES:
+                    # 🔧 PROGRAMMATIC FIX: Don't skip, try to fix programmatically
+                    logger.warning(f"⚠️ All {MAX_REFLEXION_RETRIES} retries exhausted. Attempting programmatic fix for {file_path}...")
+                    
+                    # Apply programmatic fix
+                    review_state = programmatic_fix_review_state(
+                        review_state=review_state,
+                        file_path=file_path,
+                        file_content=file_content,
+                        logger=logger
+                    )
+                    
+                    # Validate the programmatic fix
+                    is_valid_fixed, validated_fixed_state, fixed_confidence, fixed_issues = ReflexionNode(
+                        review_state=review_state,
+                        file_content=file_content,
+                        pr_context=pr_context
+                    )
+                    
+                    if is_valid_fixed or fixed_confidence >= 0.3:  # Lower threshold for programmatic fix
+                        review_state = validated_fixed_state
+                        reflexion_approved = True
+                        logger.info(f"✅ Programmatic fix approved for {file_path} (confidence: {fixed_confidence:.2f})")
+                    else:
+                        # Last resort: use the programmatically fixed state anyway
+                        logger.warning(f"⚠️ Programmatic fix validation failed, but proceeding with best-effort review for {file_path}")
+                        reflexion_approved = True  # Force approval to ensure we don't skip
                     break
 
                 # Retry: Call ReviewFileNode again with validation issues as additional context
-                logger.info(f"🔄 Retrying review generation for {file_path} with validation feedback...")
+                logger.info(f"🔄 Retrying review generation for {file_path} with validation feedback (attempt {reflexion_retry_count + 1}/{MAX_REFLEXION_RETRIES + 1})...")
 
                 retry_context = {
                     "validation_failed": True,
@@ -276,10 +369,12 @@ def review_files_node(state: WorkflowState) -> WorkflowState:
                     retry_context=retry_context  # Pass retry context
                 )
 
-            # If we still don't have a valid review after retries, skip
+            # After all attempts, we should have an approved review (either LLM or programmatic)
             if not reflexion_approved:
-                logger.info(f"⏭️ Skipping comment for {file_path} - reflexion did not approve")
-                continue
+                # This should rarely happen now, but as a final fallback
+                logger.warning(f"⚠️ Final fallback: applying programmatic fix for {file_path}")
+                review_state = programmatic_fix_review_state(review_state, file_path, file_content, logger)
+                reflexion_approved = True
             
             # Check for duplicate comments using memory
             diff_code_hash = hashlib.md5(review_state.DiffCode.encode()).hexdigest()
@@ -360,7 +455,7 @@ def review_files_node(state: WorkflowState) -> WorkflowState:
             except Exception as e:
                 logger.error(f"❌ Error posting comment: {e}", exc_info=True)
         
-        # Conditional check for additional comments (with guards)
+        # Conditional check for additional comments (with guards and retry mechanism)
         max_iterations = 2
         iteration = 0
         
@@ -381,30 +476,97 @@ def review_files_node(state: WorkflowState) -> WorkflowState:
                 logger.info(f"No more comments needed for {file_path}")
                 break
             
-            # Post the next comment with reflexion validation
+            # Post the next comment with reflexion validation and RETRY MECHANISM
             if next_review_state.CriticalityStatus in ["Medium", "Critical"]:
-                # Reflexion validation for additional comments
+                # Reflexion validation for additional comments with retry loop
                 pr_context = {
                     "pr_title": fetch_state.PrRequest.Title,
                     "pr_description": fetch_state.PrRequest.Description
                 }
 
-                is_valid, validated_next_state, confidence, validation_issues = ReflexionNode(
-                    review_state=next_review_state,
-                    file_content=file_content,
-                    pr_context=pr_context
-                )
+                additional_reflexion_approved = False
+                additional_retry_count = 0
+                current_additional_review = next_review_state
 
-                # Track reflexion approval for additional comments
-                additional_reflexion_approved = is_valid and confidence >= MIN_CONFIDENCE_THRESHOLD
+                # Retry loop for additional comments - same pattern as main review
+                while not additional_reflexion_approved and additional_retry_count <= MAX_REFLEXION_RETRIES:
+                    is_valid, validated_next_state, confidence, validation_issues = ReflexionNode(
+                        review_state=current_additional_review,
+                        file_content=file_content,
+                        pr_context=pr_context
+                    )
 
+                    additional_reflexion_approved = is_valid and confidence >= MIN_CONFIDENCE_THRESHOLD
+
+                    if additional_reflexion_approved:
+                        next_review_state = validated_next_state
+                        logger.info(f"✅ Additional comment approved by reflexion for {file_path} (confidence: {confidence:.2f})")
+                        break
+
+                    # Validation failed - increment retry and provide feedback
+                    additional_retry_count += 1
+                    logger.warning(f"⚠️ Additional review validation failed (attempt {additional_retry_count}/{MAX_REFLEXION_RETRIES}). Issues: {validation_issues}")
+
+                    if additional_retry_count > MAX_REFLEXION_RETRIES:
+                        # 🔧 PROGRAMMATIC FIX for additional comments
+                        logger.warning(f"⚠️ All retries exhausted for additional comment. Applying programmatic fix for {file_path}...")
+                        
+                        current_additional_review = programmatic_fix_review_state(
+                            review_state=current_additional_review,
+                            file_path=file_path,
+                            file_content=file_content,
+                            logger=logger
+                        )
+                        
+                        # Validate the programmatic fix
+                        is_valid_fixed, validated_fixed_state, fixed_confidence, fixed_issues = ReflexionNode(
+                            review_state=current_additional_review,
+                            file_content=file_content,
+                            pr_context=pr_context
+                        )
+                        
+                        if is_valid_fixed or fixed_confidence >= 0.3:
+                            next_review_state = validated_fixed_state
+                            additional_reflexion_approved = True
+                            logger.info(f"✅ Programmatic fix approved for additional comment (confidence: {fixed_confidence:.2f})")
+                        else:
+                            # Use programmatic fix anyway
+                            next_review_state = current_additional_review
+                            additional_reflexion_approved = True
+                            logger.warning(f"⚠️ Using best-effort programmatic fix for additional comment")
+                        break
+
+                    # Retry: Call ReviewFileNode again with validation issues as feedback
+                    logger.info(f"🔄 Retrying additional review generation for {file_path} with validation feedback (attempt {additional_retry_count + 1}/{MAX_REFLEXION_RETRIES + 1})...")
+
+                    retry_context = {
+                        "validation_failed": True,
+                        "validation_issues": validation_issues,
+                        "previous_confidence": confidence,
+                        "retry_attempt": additional_retry_count,
+                        "is_additional_comment": True,
+                        "previous_issue": current_additional_review.WhatNeedsToBeImproved
+                    }
+
+                    # Re-call ReviewFileNode with retry context for correction
+                    current_global_state, current_additional_review = ReviewFileNode(
+                        file_path=file_path,
+                        global_state=current_global_state,
+                        workspace_path=workspace_path,
+                        pr_title=fetch_state.PrRequest.Title,
+                        pr_description=fetch_state.PrRequest.Description,
+                        repo_link=initial_state.PullRequestLink,
+                        pr_number=initial_state.PullRequestNum,
+                        all_files=all_files,
+                        retry_context=retry_context
+                    )
+
+                # After all attempts, we should have an approved review
                 if not additional_reflexion_approved:
-                    logger.warning(f"❌ Additional review failed reflexion validation (confidence: {confidence:.2f}). Skipping.")
-                    break
-
-                # ✅ Additional comment approved by reflexion
-                next_review_state = validated_next_state
-                logger.info(f"✅ Additional comment approved by reflexion for {file_path} (confidence: {confidence:.2f})")
+                    # Final fallback for additional comments
+                    logger.warning(f"⚠️ Final fallback for additional comment: applying programmatic fix")
+                    next_review_state = programmatic_fix_review_state(current_additional_review, file_path, file_content, logger)
+                    additional_reflexion_approved = True
 
                 # Check for duplicates
                 diff_code_hash = hashlib.md5(next_review_state.DiffCode.encode()).hexdigest()

@@ -32,6 +32,7 @@ classifiers = [
     "Topic :: Utilities",
 ]
 dependencies = [
+    "fastapi>=0.115.0",
     "graphviz>=0.21",
     "langchain>=1.1.2",
     "langchain-community>=0.4.1",
@@ -39,8 +40,10 @@ dependencies = [
     "langchain-groq>=1.1.0",
     "langgraph>=1.0.4",
     "pygithub>=2.8.1",
+    "pydantic>=2.5.0",
     "python-dotenv>=1.2.1",
     "requests>=2.32.5",
+    "uvicorn[standard]>=0.32.0",
 ]
 
 [project.urls]
@@ -52,6 +55,28 @@ Changelog = "https://github.com/your-org/code-review-bot/blob/main/CHANGELOG.md"
 
 [project.scripts]
 code-review-bot = "main:main"
+
+[tool.hatch.build]
+exclude = [
+  "Output",
+  "logs",
+  "*.log",
+  ".env",
+  "__pycache__",
+  "*.pyc",
+  "*.pyo",
+  ".git",
+  ".gitignore",
+  "uv.lock",
+  "requirements.txt",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]
+include = [
+  "main.py",
+  "WorkFlow/**/*.py",
+]
 
 [build-system]
 requires = ["hatchling"]

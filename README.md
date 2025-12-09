@@ -46,6 +46,7 @@ An enterprise-grade, AI-powered code review automation bot built with **LangGrap
 - **Comprehensive Logging**: Full audit trail
 
 ### 🎨 **Developer Experience**
+- **FastAPI Server**: REST API for easy integration
 - **AI-Ready Prompts**: Copy-paste prompts for Cursor/Claude
 - **Before/After Code**: Clear improvement visualization
 - **Actionable Feedback**: Specific, implementable suggestions
@@ -147,6 +148,17 @@ export GIT_TOKEN="your_github_token_here"
 export GIT_WRITE_TOKEN="your_write_token_here"
 ```
 
+#### **Database**
+The bot uses SQLite for session management and memory persistence:
+
+```bash
+# Database location
+Output/memory.db
+
+# Automatic migration from JSON (if upgrading)
+# Run migration: python3 -c "from WorkFlow.utils.memory_manager import get_memory_manager; get_memory_manager().migrate_from_json()"
+```
+
 #### **GitHub Token Setup**
 1. Go to [GitHub Settings > Developer settings > Personal access tokens](https://github.com/settings/tokens)
 2. Generate a new token with these permissions:
@@ -154,33 +166,89 @@ export GIT_WRITE_TOKEN="your_write_token_here"
    - `pull_requests` (read/write pull requests)
 3. Copy the token and set it as `GIT_TOKEN`
 
-### **Basic Usage**
-
-```python
-from WorkFlow.Flow import create_workflow
-
-# Create and run the workflow
-workflow = create_workflow()
-app = workflow.compile()
-
-# Execute with PR details
-result = app.invoke({
-    "initial_state": {
-        "PullRequestLink": "https://github.com/owner/repo/pull/123",
-        "PullRequestNum": 123
-    },
-    "global_state": {}
-})
-```
-
-### **Command Line**
+### **Start the Server**
 
 ```bash
-# Run with PR URL (recommended)
-python main.py --pr-url "https://github.com/microsoft/vscode/pull/150000"
+# Start the FastAPI server
+uv run python main.py
 
-# Run with separate repo and PR number
-python main.py --repo "microsoft/vscode" --pr-number 150000
+# OR using uvicorn directly
+uv run uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+The server will start at `http://localhost:8000` with interactive API docs at `/docs`.
+
+### **API Usage**
+
+#### **Trigger a Code Review**
+```bash
+# POST request to trigger review
+curl -X POST "http://localhost:8000/review" \
+  -H "Content-Type: application/json" \
+  -d '{"pr_url": "https://github.com/owner/repo/pull/123"}'
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Code review started. Track progress with GET /review/{session_id}",
+  "session_id": "abc12345",
+  "pr_url": "https://github.com/owner/repo/pull/123",
+  "pr_number": 123,
+  "repository": "owner/repo"
+}
+```
+
+#### **Check Review Status**
+```bash
+# GET request to check status
+curl "http://localhost:8000/review/abc12345"
+```
+
+**Response:**
+```json
+{
+  "session_id": "abc12345",
+  "status": "completed",
+  "pr_number": 123,
+  "repository": "owner/repo",
+  "total_files_reviewed": 5,
+  "total_comments_posted": 3,
+  "created_at": "2025-12-09T22:00:00.000Z",
+  "last_updated": "2025-12-09T22:05:00.000Z"
+}
+```
+
+### **API Endpoints**
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/` | Health check |
+| `GET` | `/health` | Health check with details |
+| `POST` | `/review` | Trigger a new code review |
+| `GET` | `/review/{session_id}` | Get review status |
+| `GET` | `/reviews` | List all active reviews |
+| `GET` | `/stats` | Get database statistics |
+| `DELETE` | `/review/{session_id}` | Delete review session |
+
+### **Python Client Example**
+
+```python
+import requests
+
+# Trigger a review
+response = requests.post(
+    "http://localhost:8000/review",
+    json={"pr_url": "https://github.com/owner/repo/pull/123"}
+)
+result = response.json()
+session_id = result["session_id"]
+
+# Check status
+status = requests.get(f"http://localhost:8000/review/{session_id}").json()
+print(f"Status: {status['status']}")
+print(f"Comments posted: {status['total_comments_posted']}")
 
 # Show help
 python main.py --help
@@ -319,7 +387,8 @@ code-review-bot/
 │       └── Prompts.py           # 📝 Centralized prompts
 ├── 📁 logs/                      # 📊 Log files (auto-generated)
 ├── 📁 Output/                    # 📤 Generated content
-│   ├── 📁 memory/               # 💾 Session data
+│   ├── memory.db                # 🗄️ SQLite database (sessions & reviews)
+│   ├── 📁 memory/               # 💾 Legacy JSON backups (if migrated)
 │   └── 📁 diff_files/           # 📄 Processed file content
 ├── main.py                      # 🚀 CLI entry point
 ├── pyproject.toml               # ⚙️ Project configuration
