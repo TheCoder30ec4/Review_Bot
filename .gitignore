@@ -77,3 +77,5 @@ htmlcov/
 # Distribution
 *.tar.gz
 *.whl
+
+.Output/
