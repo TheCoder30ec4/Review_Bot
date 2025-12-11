@@ -7,7 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Nothing yet.
+
+## [0.0.1] - 2025-12-11
+
 ### Added
+- Initial release of Code Review Bot
 - Complete LangGraph workflow implementation
 - Reflexion validation system with confidence scoring
 - Retry mechanism for failed reviews (up to 2 attempts)
@@ -19,6 +24,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Before/after code visualization
 - Duplicate comment prevention
 - Production standards enforcement
+- GitHub PR fetching and analysis
+- File parsing and selection logic
+- Fundamental review generation capabilities
+- GitHub Actions workflow to trigger the review bot from pull requests
+- GitHub Actions workflow for deploying the service to Render
+- GitHub Actions workflow for CodeQL security analysis
 
 ### Changed
 - Centralized prompt management in PromptLibrary
@@ -32,20 +43,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - GitHub API integration
 - Comprehensive test coverage foundation
 
-## [0.1.0] - 2024-12-XX
-
-### Added
-- Initial release of Code Review Bot
-- Basic LangGraph workflow structure
-- GitHub PR fetching and analysis
-- File parsing and selection logic
-- Fundamental review generation capabilities
-
 ### Infrastructure
 - Project structure and organization
 - Dependency management with uv
 - Docker support foundation
 - CI/CD pipeline setup
+- CI workflows for PR-triggered review, Render deployment, and CodeQL analysis
 
 ---
 
