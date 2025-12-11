@@ -1,0 +1,26 @@
+name: Pull Request Trigger
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  trigger-review-bot:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code 
+        uses: actions/checkout@v4
+
+      - name: Extract Pull Request URL
+        id: pr 
+        run: echo "PR_URL=${{ github.event.pull_request.html_url }}" >> $GITHUB_ENV
+
+      - name: Trigger Review Bot API 
+        env:
+          REVIEW_API_URL: ${{ secrets.REVIEW_API_URL }}
+        run: |
+          curl -X POST "$REVIEW_API_URL" \
+            -H 'accept: application/json' \
+            -H 'Content-Type: application/json' \
+            -d "{\"pr_url\": \"$PR_URL\"}"
