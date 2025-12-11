@@ -6,6 +6,7 @@ Run this script to verify that the SQLite memory manager works correctly.
 """
 
 import sys
+import argparse
 from pathlib import Path
 
 # Add project root to path
@@ -91,10 +92,28 @@ def test_migration():
 
     return True
 
-if __name__ == "__main__":
+
+def main(argv=None):
+    """Command-line entry point to run SQLite memory manager tests."""
+    parser = argparse.ArgumentParser(
+        description="Run SQLite Memory Manager tests and migration checks."
+    )
+    parser.add_argument(
+        "--mode",
+        choices=["all", "memory", "migration"],
+        default="all",
+        help="Which tests to run: 'memory', 'migration', or 'all' (default).",
+    )
+
+    args = parser.parse_args(argv)
+
     try:
-        test_sqlite_memory_manager()
-        test_migration()
+        if args.mode in ("all", "memory"):
+            test_sqlite_memory_manager()
+
+        if args.mode in ("all", "migration"):
+            test_migration()
+
         print("\n✅ All tests completed successfully!")
     except Exception as e:
         print(f"\n❌ Test failed: {e}")
@@ -102,3 +121,6 @@ if __name__ == "__main__":
         traceback.print_exc()
         sys.exit(1)
 
+
+if __name__ == "__main__":
+    main()
