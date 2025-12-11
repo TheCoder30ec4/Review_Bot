@@ -7,11 +7,19 @@ Run this script to verify that the SQLite memory manager works correctly.
 
 import sys
 import argparse
+import logging
+import traceback
 from pathlib import Path
 
 # Add project root to path
 project_root = Path(__file__).parent
 sys.path.insert(0, str(project_root))
+
+# Configure a basic logger; in a real application this configuration would be centralized.
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
 
 def test_sqlite_memory_manager():
     """Test the SQLite memory manager functionality."""
@@ -110,14 +118,19 @@ def main(argv=None):
     try:
         if args.mode in ("all", "memory"):
             test_sqlite_memory_manager()
+            logging.info("Memory manager tests completed successfully.")
 
         if args.mode in ("all", "migration"):
             test_migration()
+            logging.info("Migration tests completed successfully.")
 
-        print("\n✅ All tests completed successfully!")
+        # Summarize overall result based on the selected mode.
+        if args.mode == "all":
+            logging.info("✅ All tests (memory and migration) completed successfully!")
+        else:
+            logging.info(f"✅ Selected tests ({args.mode}) completed successfully!")
     except Exception as e:
-        print(f"\n❌ Test failed: {e}")
-        import traceback
+        logging.error(f"❌ Test failed: {e}")
         traceback.print_exc()
         sys.exit(1)
 
