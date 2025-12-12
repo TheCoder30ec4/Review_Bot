@@ -7,8 +7,8 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 from langchain_groq import ChatGroq
 from langchain_core.messages import SystemMessage, HumanMessage
-import os
 import shutil
+import tempfile
 
 # Add project root to path for direct folder imports
 current_file = Path(__file__).resolve()
@@ -45,6 +45,10 @@ def FinalDraftNode(
     logger = get_logger()
     # Use a path relative to the project root so this works both locally and in deployment
     diff_folder = project_root / "Output" / "diff_files"
+    # Ensure the base diff folder exists so we can create per-run temp dirs inside it
+    diff_folder.mkdir(parents=True, exist_ok=True)
+    # Create a unique temporary sub-directory for this run
+    run_temp_dir = tempfile.mkdtemp(dir=diff_folder)
     
     try:
         # Prepare context for the LLM
@@ -117,19 +121,12 @@ Format the comment using Markdown with clear sections, headers, and bullet point
                 response = llm.invoke(messages)
                 summary_comment = response.content if hasattr(response, 'content') else str(response)
 
-                # Safely clean up generated diff files folder
-                if diff_folder.exists():
-                    # Ensure we are deleting a real directory and not a symlink to another location
-                    if diff_folder.is_dir() and not diff_folder.is_symlink():
-                        try:
-                            shutil.rmtree(diff_folder)
-                            logger.info(f"Output diff folder cleared at: {diff_folder}")
-                        except Exception as cleanup_err:
-                            logger.warning(f"Failed to clear diff folder at {diff_folder}: {cleanup_err}")
-                    else:
-                        logger.warning(f"Skipped diff folder cleanup because {diff_folder} is not a regular directory or is a symlink.")
-                else:
-                    logger.info(f"No diff folder found to clear at: {diff_folder}")
+                # After processing is complete, clean up only this run's temporary diff files
+                try:
+                    shutil.rmtree(run_temp_dir)
+                    logger.info(f"Cleaned up temporary diff files for this run at: {run_temp_dir}")
+                except Exception as cleanup_err:
+                    logger.warning(f"Failed to clean temporary diff folder {run_temp_dir}: {cleanup_err}")
 
                 break  # Success, exit retry loop
             except Exception as e:
