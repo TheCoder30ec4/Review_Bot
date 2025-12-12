@@ -5,9 +5,9 @@ Test script for SQLite Memory Manager
 Run this script to verify that the SQLite memory manager works correctly.
 """
 
-import sys
 import argparse
 import logging
+import sys
 import traceback
 from pathlib import Path
 
@@ -17,9 +17,9 @@ sys.path.insert(0, str(project_root))
 
 # Configure a basic logger; in a real application this configuration would be centralized.
 logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s"
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
+
 
 def test_sqlite_memory_manager():
     """Test the SQLite memory manager functionality."""
@@ -40,7 +40,7 @@ def test_sqlite_memory_manager():
         repo_link="https://github.com/test/repo",
         pr_number=123,
         pr_title="Test PR",
-        pr_description="Test description"
+        pr_description="Test description",
     )
     print(f"✅ Created session: {session.session_id}")
 
@@ -58,15 +58,13 @@ def test_sqlite_memory_manager():
         issue="Missing error handling",
         diff_code="def process():\n    pass",
         comment_id="12345",
-        comment_url="https://github.com/test/repo/pull/123#discussion_r12345"
+        comment_url="https://github.com/test/repo/pull/123#discussion_r12345",
     )
     print("✅ Review memory added")
 
     # Test duplicate checking
     is_duplicate = manager.check_duplicate_comment(
-        session=loaded_session,
-        file_path="src/main.py",
-        issue="Missing error handling"
+        session=loaded_session, file_path="src/main.py", issue="Missing error handling"
     )
     assert is_duplicate == True
     print("✅ Duplicate detection works")
@@ -85,6 +83,7 @@ def test_sqlite_memory_manager():
 
     print("\n🎉 All SQLite memory manager tests passed!")
     return True
+
 
 def test_migration():
     """Test JSON to SQLite migration."""

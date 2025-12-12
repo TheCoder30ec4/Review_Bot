@@ -1,7 +1,6 @@
 """Prompt templates for the code review workflow."""
 
-from typing import Optional, Dict, Any
-
+from typing import Any, Dict, Optional
 
 # System prompt for file parsing node
 PARSE_FILES_SYSTEM_PROMPT = """Improved Prompt: Expert Code-Review File Filter
@@ -54,27 +53,27 @@ def get_parse_files_invocation_prompt(
     pr_description: str,
     file_structure: list[str],
     ignored_files: list[str],
-    workspace_path: str
+    workspace_path: str,
 ) -> str:
     """
     Generate invocation prompt for file parsing.
-    
+
     Args:
         pr_title: Pull request title
         pr_description: Pull request description
         file_structure: List of strings representing file structure
         ignored_files: List of already ignored files
         workspace_path: Workspace path where diff files are stored
-    
+
     Returns:
         Formatted invocation prompt string
     """
     ignored_files_display = "\n".join([f"- {file}" for file in ignored_files[:10]])
     if len(ignored_files) > 10:
         ignored_files_display += f"\n... and {len(ignored_files) - 10} more"
-    
+
     file_structure_display = "\n".join(file_structure)
-    
+
     return f"""Analyze the following list of files changed in a pull request and decide which files should be reviewed and which should be skipped.
 
 Pull Request Title: {pr_title}
@@ -300,7 +299,7 @@ def get_review_file_invocation_prompt(
     workspace_path: str,
     repo_link: str,
     pr_number: int,
-    retry_context: Optional[Dict[str, Any]] = None
+    retry_context: Optional[Dict[str, Any]] = None,
 ) -> str:
     """
     Generate invocation prompt for file review.
@@ -323,9 +322,13 @@ def get_review_file_invocation_prompt(
     if relevant_files_context:
         relevant_files_section = "\n\n**Relevant Context Files:**\n"
         for rel_file in relevant_files_context:
-            relevance = rel_file.get('relevance', 'No relevance explanation provided')
-            file_path_rel = rel_file.get('file_path', 'Unknown')
-            content_preview = rel_file.get('content', '')[:500] if rel_file.get('content') else 'No content'
+            relevance = rel_file.get("relevance", "No relevance explanation provided")
+            file_path_rel = rel_file.get("file_path", "Unknown")
+            content_preview = (
+                rel_file.get("content", "")[:500]
+                if rel_file.get("content")
+                else "No content"
+            )
             relevant_files_section += f"""
 **File: {file_path_rel}**
 Relevance: {relevance}
@@ -351,18 +354,30 @@ Content Preview:
         issues_str = " ".join(validation_issues).lower()
 
         if "currentcode" in issues_str or "current code" in issues_str:
-            fix_instructions.append("⚠️ **CurrentCode was MISSING or EMPTY**: You MUST extract the exact existing code from the file that needs to be changed")
-        
-        if "suggestedcode" in issues_str or "suggested code" in issues_str:
-            fix_instructions.append("⚠️ **SuggestedCode was MISSING or EMPTY**: You MUST provide the complete, fixed version of the code")
-        
-        if "file path" in issues_str or "file is not provided" in issues_str:
-            fix_instructions.append("⚠️ **File path was MISSING**: You MUST include the exact file path being reviewed")
-        
-        if "diffcode" in issues_str or "diff" in issues_str:
-            fix_instructions.append("⚠️ **DiffCode needs improvement**: Include complete code context without diff markers (+/-)")
+            fix_instructions.append(
+                "⚠️ **CurrentCode was MISSING or EMPTY**: You MUST extract the exact existing code from the file that needs to be changed"
+            )
 
-        specific_fixes = "\n".join(fix_instructions) if fix_instructions else "Address all validation issues listed above"
+        if "suggestedcode" in issues_str or "suggested code" in issues_str:
+            fix_instructions.append(
+                "⚠️ **SuggestedCode was MISSING or EMPTY**: You MUST provide the complete, fixed version of the code"
+            )
+
+        if "file path" in issues_str or "file is not provided" in issues_str:
+            fix_instructions.append(
+                "⚠️ **File path was MISSING**: You MUST include the exact file path being reviewed"
+            )
+
+        if "diffcode" in issues_str or "diff" in issues_str:
+            fix_instructions.append(
+                "⚠️ **DiffCode needs improvement**: Include complete code context without diff markers (+/-)"
+            )
+
+        specific_fixes = (
+            "\n".join(fix_instructions)
+            if fix_instructions
+            else "Address all validation issues listed above"
+        )
 
         additional_context = ""
         if is_additional and previous_issue:
