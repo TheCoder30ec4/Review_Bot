@@ -117,13 +117,17 @@ Format the comment using Markdown with clear sections, headers, and bullet point
                 response = llm.invoke(messages)
                 summary_comment = response.content if hasattr(response, 'content') else str(response)
 
-                # Clean up generated diff files folder if it exists (works both locally and in deployment)
+                # Safely clean up generated diff files folder
                 if diff_folder.exists():
-                    try:
-                        shutil.rmtree(diff_folder)
-                        logger.info(f"Output diff folder cleared at: {diff_folder}")
-                    except Exception as cleanup_err:
-                        logger.warning(f"Failed to clear diff folder at {diff_folder}: {cleanup_err}")
+                    # Ensure we are deleting a real directory and not a symlink to another location
+                    if diff_folder.is_dir() and not diff_folder.is_symlink():
+                        try:
+                            shutil.rmtree(diff_folder)
+                            logger.info(f"Output diff folder cleared at: {diff_folder}")
+                        except Exception as cleanup_err:
+                            logger.warning(f"Failed to clear diff folder at {diff_folder}: {cleanup_err}")
+                    else:
+                        logger.warning(f"Skipped diff folder cleanup because {diff_folder} is not a regular directory or is a symlink.")
                 else:
                     logger.info(f"No diff folder found to clear at: {diff_folder}")
 
