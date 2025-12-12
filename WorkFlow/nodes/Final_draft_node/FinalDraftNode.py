@@ -7,6 +7,8 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 from langchain_groq import ChatGroq
 from langchain_core.messages import SystemMessage, HumanMessage
+import os
+import shutil
 
 # Add project root to path for direct folder imports
 current_file = Path(__file__).resolve()
@@ -41,6 +43,8 @@ def FinalDraftNode(
         The summary comment text that was posted
     """
     logger = get_logger()
+    # Use a path relative to the project root so this works both locally and in deployment
+    diff_folder = project_root / "Output" / "diff_files"
     
     try:
         # Prepare context for the LLM
@@ -112,6 +116,17 @@ Format the comment using Markdown with clear sections, headers, and bullet point
             try:
                 response = llm.invoke(messages)
                 summary_comment = response.content if hasattr(response, 'content') else str(response)
+
+                # Clean up generated diff files folder if it exists (works both locally and in deployment)
+                if diff_folder.exists():
+                    try:
+                        shutil.rmtree(diff_folder)
+                        logger.info(f"Output diff folder cleared at: {diff_folder}")
+                    except Exception as cleanup_err:
+                        logger.warning(f"Failed to clear diff folder at {diff_folder}: {cleanup_err}")
+                else:
+                    logger.info(f"No diff folder found to clear at: {diff_folder}")
+
                 break  # Success, exit retry loop
             except Exception as e:
                 error_str = str(e)
