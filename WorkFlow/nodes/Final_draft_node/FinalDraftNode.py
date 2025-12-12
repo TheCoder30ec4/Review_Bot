@@ -44,6 +44,7 @@ def FinalDraftNode(
     """
     logger = get_logger()
     # Use a path relative to the project root so this works both locally and in deployment
+    project_root = Path(__file__).resolve().parents[2]
     diff_folder = project_root / "Output" / "diff_files"
     # Ensure the base diff folder exists so we can create per-run temp dirs inside it
     diff_folder.mkdir(parents=True, exist_ok=True)
