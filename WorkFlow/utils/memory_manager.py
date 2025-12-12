@@ -1,10 +1,11 @@
 """Memory manager for tracking PR review sessions and history using SQLite3."""
 
-import sqlite3
 import hashlib
-from pathlib import Path
-from typing import Dict, Any, Optional, List
+import sqlite3
 from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
 from pydantic import BaseModel, Field
 
 from .logger import get_logger
@@ -15,6 +16,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 class ReviewMemory(BaseModel):
     """Memory of a single review comment."""
+
     file_path: str
     criticality: str
     issue: str
@@ -26,6 +28,7 @@ class ReviewMemory(BaseModel):
 
 class PRSession(BaseModel):
     """Session data for a pull request review."""
+
     session_id: str = Field(description="Unique session ID for this PR review")
     pr_number: int
     repo_link: str
@@ -60,7 +63,9 @@ class MemoryManager:
 
         # Initialize database
         self._init_database()
-        self.logger.info(f"MemoryManager initialized with SQLite database: {self.db_path}")
+        self.logger.info(
+            f"MemoryManager initialized with SQLite database: {self.db_path}"
+        )
 
     def _init_database(self):
         """Initialize SQLite database with required tables."""
@@ -68,7 +73,8 @@ class MemoryManager:
             cursor = conn.cursor()
 
             # Create sessions table
-            cursor.execute('''
+            cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS sessions (
                     session_id TEXT PRIMARY KEY,
                     pr_number INTEGER NOT NULL,
@@ -83,10 +89,12 @@ class MemoryManager:
                     status TEXT DEFAULT 'in_progress',
                     UNIQUE(repo_link, pr_number)
                 )
-            ''')
+            """
+            )
 
             # Create review_memories table
-            cursor.execute('''
+            cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS review_memories (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     session_id TEXT NOT NULL,
@@ -99,20 +107,24 @@ class MemoryManager:
                     comment_url TEXT,
                     FOREIGN KEY (session_id) REFERENCES sessions (session_id)
                 )
-            ''')
+            """
+            )
 
             # Create files_reviewed table
-            cursor.execute('''
+            cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS files_reviewed (
                     session_id TEXT NOT NULL,
                     file_path TEXT NOT NULL,
                     PRIMARY KEY (session_id, file_path),
                     FOREIGN KEY (session_id) REFERENCES sessions (session_id)
                 )
-            ''')
+            """
+            )
 
             # Create files_skipped table
-            cursor.execute('''
+            cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS files_skipped (
                     session_id TEXT NOT NULL,
                     file_path TEXT NOT NULL,
@@ -120,7 +132,8 @@ class MemoryManager:
                     PRIMARY KEY (session_id, file_path),
                     FOREIGN KEY (session_id) REFERENCES sessions (session_id)
                 )
-            ''')
+            """
+            )
 
             conn.commit()
             self.logger.debug("Database tables initialized")
@@ -147,7 +160,7 @@ class MemoryManager:
             try:
                 self.logger.info(f"Migrating {json_file.name}...")
 
-                with open(json_file, 'r', encoding='utf-8') as f:
+                with open(json_file, "r", encoding="utf-8") as f:
                     data = json.load(f)
 
                 # Create session in database
@@ -156,12 +169,14 @@ class MemoryManager:
                 migrated_count += 1
 
                 # Backup original file
-                backup_file = json_file.with_suffix('.json.backup')
+                backup_file = json_file.with_suffix(".json.backup")
                 json_file.rename(backup_file)
                 self.logger.info(f"Backed up {json_file.name} to {backup_file.name}")
 
             except Exception as e:
-                self.logger.error(f"Error migrating {json_file.name}: {e}", exc_info=True)
+                self.logger.error(
+                    f"Error migrating {json_file.name}: {e}", exc_info=True
+                )
 
         self.logger.info(f"Migration complete: {migrated_count} sessions migrated")
         return migrated_count
@@ -172,44 +187,62 @@ class MemoryManager:
             cursor = conn.cursor()
 
             # Insert session
-            cursor.execute('''
+            cursor.execute(
+                """
                 INSERT OR REPLACE INTO sessions
                 (session_id, pr_number, repo_link, pr_title, pr_description,
                  created_at, last_updated, total_files_reviewed, total_comments_posted,
                  final_summary, status)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (
-                session.session_id, session.pr_number, session.repo_link,
-                session.pr_title, session.pr_description, session.created_at,
-                session.last_updated, session.total_files_reviewed,
-                session.total_comments_posted, session.final_summary, session.status
-            ))
+            """,
+                (
+                    session.session_id,
+                    session.pr_number,
+                    session.repo_link,
+                    session.pr_title,
+                    session.pr_description,
+                    session.created_at,
+                    session.last_updated,
+                    session.total_files_reviewed,
+                    session.total_comments_posted,
+                    session.final_summary,
+                    session.status,
+                ),
+            )
 
             # Insert review memories
             for memory in session.review_memories:
-                cursor.execute('''
+                cursor.execute(
+                    """
                     INSERT INTO review_memories
                     (session_id, file_path, criticality, issue, diff_code,
                      timestamp, comment_id, comment_url)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                ''', (
-                    session.session_id, memory.file_path, memory.criticality,
-                    memory.issue, memory.diff_code, memory.timestamp,
-                    memory.comment_id, memory.comment_url
-                ))
+                """,
+                    (
+                        session.session_id,
+                        memory.file_path,
+                        memory.criticality,
+                        memory.issue,
+                        memory.diff_code,
+                        memory.timestamp,
+                        memory.comment_id,
+                        memory.comment_url,
+                    ),
+                )
 
             # Insert files reviewed
             for file_path in session.files_reviewed:
                 cursor.execute(
                     "INSERT OR IGNORE INTO files_reviewed (session_id, file_path) VALUES (?, ?)",
-                    (session.session_id, file_path)
+                    (session.session_id, file_path),
                 )
 
             # Insert files skipped
             for file_path, reason in session.files_skipped:
                 cursor.execute(
                     "INSERT OR IGNORE INTO files_skipped (session_id, file_path, reason) VALUES (?, ?, ?)",
-                    (session.session_id, file_path, reason)
+                    (session.session_id, file_path, reason),
                 )
 
             conn.commit()
@@ -229,23 +262,28 @@ class MemoryManager:
 
                 # Count sessions
                 cursor.execute("SELECT COUNT(*) FROM sessions")
-                stats['total_sessions'] = cursor.fetchone()[0]
+                stats["total_sessions"] = cursor.fetchone()[0]
 
                 # Count review memories
                 cursor.execute("SELECT COUNT(*) FROM review_memories")
-                stats['total_review_memories'] = cursor.fetchone()[0]
+                stats["total_review_memories"] = cursor.fetchone()[0]
 
                 # Count unique files reviewed
                 cursor.execute("SELECT COUNT(DISTINCT file_path) FROM files_reviewed")
-                stats['unique_files_reviewed'] = cursor.fetchone()[0]
+                stats["unique_files_reviewed"] = cursor.fetchone()[0]
 
                 # Sessions by status
                 cursor.execute("SELECT status, COUNT(*) FROM sessions GROUP BY status")
-                stats['sessions_by_status'] = {row[0]: row[1] for row in cursor.fetchall()}
+                stats["sessions_by_status"] = {
+                    row[0]: row[1] for row in cursor.fetchall()
+                }
 
                 # Database file size
                 import os
-                stats['database_size_mb'] = os.path.getsize(self.db_path) / (1024 * 1024)
+
+                stats["database_size_mb"] = os.path.getsize(self.db_path) / (
+                    1024 * 1024
+                )
 
                 return stats
 
@@ -269,7 +307,7 @@ class MemoryManager:
         session_id = hashlib.md5(identifier.encode()).hexdigest()[:16]
         self.logger.debug(f"Generated session ID: {session_id} for {identifier}")
         return session_id
-    
+
     def load_session(self, repo_link: str, pr_number: int) -> Optional[PRSession]:
         """
         Load existing session for a PR from SQLite database.
@@ -289,8 +327,7 @@ class MemoryManager:
 
                 # Load session data
                 cursor.execute(
-                    "SELECT * FROM sessions WHERE session_id = ?",
-                    (session_id,)
+                    "SELECT * FROM sessions WHERE session_id = ?", (session_id,)
                 )
                 session_row = cursor.fetchone()
 
@@ -301,21 +338,21 @@ class MemoryManager:
                 # Load review memories
                 cursor.execute(
                     "SELECT file_path, criticality, issue, diff_code, timestamp, comment_id, comment_url FROM review_memories WHERE session_id = ? ORDER BY timestamp",
-                    (session_id,)
+                    (session_id,),
                 )
                 memory_rows = cursor.fetchall()
 
                 # Load files reviewed
                 cursor.execute(
                     "SELECT file_path FROM files_reviewed WHERE session_id = ?",
-                    (session_id,)
+                    (session_id,),
                 )
                 files_reviewed = [row[0] for row in cursor.fetchall()]
 
                 # Load files skipped
                 cursor.execute(
                     "SELECT file_path, reason FROM files_skipped WHERE session_id = ?",
-                    (session_id,)
+                    (session_id,),
                 )
                 files_skipped = [(row[0], row[1]) for row in cursor.fetchall()]
 
@@ -328,7 +365,7 @@ class MemoryManager:
                         diff_code=row[3],
                         timestamp=row[4],
                         comment_id=row[5],
-                        comment_url=row[6]
+                        comment_url=row[6],
                     )
                     for row in memory_rows
                 ]
@@ -347,22 +384,20 @@ class MemoryManager:
                     files_reviewed=files_reviewed,
                     files_skipped=files_skipped,
                     final_summary=session_row[9],
-                    status=session_row[10]
+                    status=session_row[10],
                 )
 
-                self.logger.info(f"Loaded session {session_id}: {session.total_comments_posted} comments, {session.total_files_reviewed} files reviewed")
+                self.logger.info(
+                    f"Loaded session {session_id}: {session.total_comments_posted} comments, {session.total_files_reviewed} files reviewed"
+                )
                 return session
 
         except Exception as e:
             self.logger.error(f"Error loading session {session_id}: {e}", exc_info=True)
             return None
-    
+
     def create_session(
-        self,
-        repo_link: str,
-        pr_number: int,
-        pr_title: str,
-        pr_description: str
+        self, repo_link: str, pr_number: int, pr_title: str, pr_description: str
     ) -> PRSession:
         """
         Create new session for a PR in SQLite database.
@@ -384,11 +419,23 @@ class MemoryManager:
                 cursor = conn.cursor()
 
                 # Insert session
-                cursor.execute('''
+                cursor.execute(
+                    """
                     INSERT INTO sessions
                     (session_id, pr_number, repo_link, pr_title, pr_description, created_at, last_updated, status)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                ''', (session_id, pr_number, repo_link, pr_title, pr_description, now, now, "in_progress"))
+                """,
+                    (
+                        session_id,
+                        pr_number,
+                        repo_link,
+                        pr_title,
+                        pr_description,
+                        now,
+                        now,
+                        "in_progress",
+                    ),
+                )
 
                 conn.commit()
 
@@ -400,10 +447,12 @@ class MemoryManager:
                     pr_description=pr_description,
                     created_at=now,
                     last_updated=now,
-                    status="in_progress"
+                    status="in_progress",
                 )
 
-                self.logger.info(f"Created new session {session_id} for PR #{pr_number}")
+                self.logger.info(
+                    f"Created new session {session_id} for PR #{pr_number}"
+                )
                 return session
 
         except sqlite3.IntegrityError:
@@ -411,9 +460,11 @@ class MemoryManager:
             self.logger.warning(f"Session {session_id} already exists, loading instead")
             return self.load_session(repo_link, pr_number)
         except Exception as e:
-            self.logger.error(f"Error creating session {session_id}: {e}", exc_info=True)
+            self.logger.error(
+                f"Error creating session {session_id}: {e}", exc_info=True
+            )
             raise
-    
+
     def save_session(self, session: PRSession) -> None:
         """
         Save session to SQLite database.
@@ -429,7 +480,8 @@ class MemoryManager:
                 session.last_updated = datetime.now().isoformat()
 
                 # Update session data
-                cursor.execute('''
+                cursor.execute(
+                    """
                     UPDATE sessions SET
                         last_updated = ?,
                         total_files_reviewed = ?,
@@ -437,38 +489,48 @@ class MemoryManager:
                         final_summary = ?,
                         status = ?
                     WHERE session_id = ?
-                ''', (
-                    session.last_updated,
-                    session.total_files_reviewed,
-                    session.total_comments_posted,
-                    session.final_summary,
-                    session.status,
-                    session.session_id
-                ))
+                """,
+                    (
+                        session.last_updated,
+                        session.total_files_reviewed,
+                        session.total_comments_posted,
+                        session.final_summary,
+                        session.status,
+                        session.session_id,
+                    ),
+                )
 
                 # Clear and re-insert files_reviewed
-                cursor.execute("DELETE FROM files_reviewed WHERE session_id = ?", (session.session_id,))
+                cursor.execute(
+                    "DELETE FROM files_reviewed WHERE session_id = ?",
+                    (session.session_id,),
+                )
                 for file_path in session.files_reviewed:
                     cursor.execute(
                         "INSERT INTO files_reviewed (session_id, file_path) VALUES (?, ?)",
-                        (session.session_id, file_path)
+                        (session.session_id, file_path),
                     )
 
                 # Clear and re-insert files_skipped
-                cursor.execute("DELETE FROM files_skipped WHERE session_id = ?", (session.session_id,))
+                cursor.execute(
+                    "DELETE FROM files_skipped WHERE session_id = ?",
+                    (session.session_id,),
+                )
                 for file_path, reason in session.files_skipped:
                     cursor.execute(
                         "INSERT INTO files_skipped (session_id, file_path, reason) VALUES (?, ?, ?)",
-                        (session.session_id, file_path, reason)
+                        (session.session_id, file_path, reason),
                     )
 
                 conn.commit()
                 self.logger.debug(f"Saved session {session.session_id} to database")
 
         except Exception as e:
-            self.logger.error(f"Error saving session {session.session_id}: {e}", exc_info=True)
+            self.logger.error(
+                f"Error saving session {session.session_id}: {e}", exc_info=True
+            )
             raise
-    
+
     def add_review_memory(
         self,
         session: PRSession,
@@ -477,7 +539,7 @@ class MemoryManager:
         issue: str,
         diff_code: str,
         comment_id: Optional[str] = None,
-        comment_url: Optional[str] = None
+        comment_url: Optional[str] = None,
     ) -> None:
         """
         Add a review memory to the session in SQLite database.
@@ -497,20 +559,23 @@ class MemoryManager:
                 timestamp = datetime.now().isoformat()
 
                 # Insert review memory
-                cursor.execute('''
+                cursor.execute(
+                    """
                     INSERT INTO review_memories
                     (session_id, file_path, criticality, issue, diff_code, timestamp, comment_id, comment_url)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                ''', (
-                    session.session_id,
-                    file_path,
-                    criticality,
-                    issue,
-                    diff_code[:500],  # Limit size
-                    timestamp,
-                    comment_id,
-                    comment_url
-                ))
+                """,
+                    (
+                        session.session_id,
+                        file_path,
+                        criticality,
+                        issue,
+                        diff_code[:500],  # Limit size
+                        timestamp,
+                        comment_id,
+                        comment_url,
+                    ),
+                )
 
                 # Update session counters
                 session.total_comments_posted += 1
@@ -518,28 +583,31 @@ class MemoryManager:
                 # Check if file is already reviewed
                 cursor.execute(
                     "SELECT COUNT(*) FROM files_reviewed WHERE session_id = ? AND file_path = ?",
-                    (session.session_id, file_path)
+                    (session.session_id, file_path),
                 )
                 if cursor.fetchone()[0] == 0:
                     cursor.execute(
                         "INSERT INTO files_reviewed (session_id, file_path) VALUES (?, ?)",
-                        (session.session_id, file_path)
+                        (session.session_id, file_path),
                     )
                     session.total_files_reviewed += 1
 
                 # Update session counters in database
-                cursor.execute('''
+                cursor.execute(
+                    """
                     UPDATE sessions SET
                         total_files_reviewed = ?,
                         total_comments_posted = ?,
                         last_updated = ?
                     WHERE session_id = ?
-                ''', (
-                    session.total_files_reviewed,
-                    session.total_comments_posted,
-                    timestamp,
-                    session.session_id
-                ))
+                """,
+                    (
+                        session.total_files_reviewed,
+                        session.total_comments_posted,
+                        timestamp,
+                        session.session_id,
+                    ),
+                )
 
                 conn.commit()
 
@@ -551,7 +619,7 @@ class MemoryManager:
                     diff_code=diff_code[:500],
                     timestamp=timestamp,
                     comment_id=comment_id,
-                    comment_url=comment_url
+                    comment_url=comment_url,
                 )
                 session.review_memories.append(memory)
 
@@ -563,13 +631,13 @@ class MemoryManager:
         except Exception as e:
             self.logger.error(f"Error adding review memory: {e}", exc_info=True)
             raise
-    
+
     def check_duplicate_comment(
         self,
         session: PRSession,
         file_path: str,
         issue: str,
-        similarity_threshold: float = 0.8
+        similarity_threshold: float = 0.8,
     ) -> bool:
         """
         Check if a similar comment was already posted for this file.
@@ -590,7 +658,7 @@ class MemoryManager:
                 # Get existing issues for this file in the session
                 cursor.execute(
                     "SELECT issue FROM review_memories WHERE session_id = ? AND file_path = ?",
-                    (session.session_id, file_path)
+                    (session.session_id, file_path),
                 )
 
                 existing_issues = [row[0] for row in cursor.fetchall()]
@@ -604,10 +672,14 @@ class MemoryManager:
                         continue
 
                     common_words = issue_words.intersection(memory_words)
-                    similarity = len(common_words) / max(len(issue_words), len(memory_words))
+                    similarity = len(common_words) / max(
+                        len(issue_words), len(memory_words)
+                    )
 
                     if similarity >= similarity_threshold:
-                        self.logger.warning(f"Duplicate comment detected for {file_path}: {similarity:.2f} similarity")
+                        self.logger.warning(
+                            f"Duplicate comment detected for {file_path}: {similarity:.2f} similarity"
+                        )
                         return True
 
                 return False
@@ -615,7 +687,7 @@ class MemoryManager:
         except Exception as e:
             self.logger.error(f"Error checking duplicate comment: {e}", exc_info=True)
             return False
-    
+
     def get_file_review_count(self, session: PRSession, file_path: str) -> int:
         """
         Get the number of times a file has been reviewed from SQLite database.
@@ -632,13 +704,13 @@ class MemoryManager:
                 cursor = conn.cursor()
                 cursor.execute(
                     "SELECT COUNT(*) FROM review_memories WHERE session_id = ? AND file_path = ?",
-                    (session.session_id, file_path)
+                    (session.session_id, file_path),
                 )
                 return cursor.fetchone()[0]
         except Exception as e:
             self.logger.error(f"Error getting file review count: {e}", exc_info=True)
             return 0
-    
+
     def complete_session(self, session: PRSession, final_summary: str) -> None:
         """
         Mark session as completed in SQLite database.
@@ -651,17 +723,16 @@ class MemoryManager:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
 
-                cursor.execute('''
+                cursor.execute(
+                    """
                     UPDATE sessions SET
                         status = 'completed',
                         final_summary = ?,
                         last_updated = ?
                     WHERE session_id = ?
-                ''', (
-                    final_summary,
-                    datetime.now().isoformat(),
-                    session.session_id
-                ))
+                """,
+                    (final_summary, datetime.now().isoformat(), session.session_id),
+                )
 
                 conn.commit()
 
@@ -672,9 +743,11 @@ class MemoryManager:
                 self.logger.info(f"Session {session.session_id} marked as completed")
 
         except Exception as e:
-            self.logger.error(f"Error completing session {session.session_id}: {e}", exc_info=True)
+            self.logger.error(
+                f"Error completing session {session.session_id}: {e}", exc_info=True
+            )
             raise
-    
+
     def get_session_summary(self, session: PRSession) -> Dict[str, Any]:
         """
         Get a summary of the session from SQLite database.
@@ -690,32 +763,35 @@ class MemoryManager:
                 cursor = conn.cursor()
 
                 # Get criticality counts from database
-                cursor.execute('''
+                cursor.execute(
+                    """
                     SELECT criticality, COUNT(*) as count
                     FROM review_memories
                     WHERE session_id = ?
                     GROUP BY criticality
-                ''', (session.session_id,))
+                """,
+                    (session.session_id,),
+                )
 
                 criticality_counts = {row[0]: row[1] for row in cursor.fetchall()}
 
                 # Get files reviewed count from database
                 cursor.execute(
                     "SELECT COUNT(*) FROM files_reviewed WHERE session_id = ?",
-                    (session.session_id,)
+                    (session.session_id,),
                 )
                 total_files_reviewed = cursor.fetchone()[0]
 
                 # Get first 10 files reviewed
                 cursor.execute(
                     "SELECT file_path FROM files_reviewed WHERE session_id = ? LIMIT 10",
-                    (session.session_id,)
+                    (session.session_id,),
                 )
                 files_reviewed = [row[0] for row in cursor.fetchall()]
 
                 cursor.execute(
                     "SELECT COUNT(*) FROM files_reviewed WHERE session_id = ?",
-                    (session.session_id,)
+                    (session.session_id,),
                 )
                 total_files_count = cursor.fetchone()[0]
 
@@ -731,14 +807,18 @@ class MemoryManager:
                     "medium_issues": criticality_counts.get("Medium", 0),
                     "ok_issues": criticality_counts.get("OK", 0),
                     "files_reviewed": files_reviewed,
-                    "has_more_files": total_files_count > 10
+                    "has_more_files": total_files_count > 10,
                 }
 
         except Exception as e:
             self.logger.error(f"Error getting session summary: {e}", exc_info=True)
             # Fallback to in-memory calculation
-            critical_count = sum(1 for m in session.review_memories if m.criticality == "Critical")
-            medium_count = sum(1 for m in session.review_memories if m.criticality == "Medium")
+            critical_count = sum(
+                1 for m in session.review_memories if m.criticality == "Critical"
+            )
+            medium_count = sum(
+                1 for m in session.review_memories if m.criticality == "Medium"
+            )
             ok_count = sum(1 for m in session.review_memories if m.criticality == "OK")
 
             return {
@@ -753,7 +833,7 @@ class MemoryManager:
                 "medium_issues": medium_count,
                 "ok_issues": ok_count,
                 "files_reviewed": session.files_reviewed[:10],
-                "has_more_files": len(session.files_reviewed) > 10
+                "has_more_files": len(session.files_reviewed) > 10,
             }
 
 
@@ -767,4 +847,3 @@ def get_memory_manager() -> MemoryManager:
     if _memory_manager is None:
         _memory_manager = MemoryManager()
     return _memory_manager
-
